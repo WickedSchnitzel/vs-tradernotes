@@ -20,8 +20,7 @@ namespace TraderMapTooltip
         
         // Überschriften
         public string ColorSelling = "#40a746"; 
-        // Geändert auf #deffa1
-        public string ColorBuying = "#deffa1";  
+        public string ColorBuying = "#fb2870";  
         
         // Item Details
         public string ColorDemand = "#9d9d9d";    
@@ -45,6 +44,7 @@ namespace TraderMapTooltip
         public int Money { get; set; }
         public bool IsDiscovered { get; set; } = false;
         public double LastUpdatedTotalDays { get; set; }
+        // Dieser Wert ist fest gespeichert und ändert sich nur bei Besuch
         public double NextRefreshTotalDays { get; set; }
         
         public List<CachedTradeItem> Sells { get; set; } = new List<CachedTradeItem>();
@@ -62,6 +62,9 @@ namespace TraderMapTooltip
         public static long LatestLayerId = 0;
         private string savePath;
         private bool wasTraderInventoryOpen = false;
+        
+        // Verhindert den Absturz beim Laden
+        private bool isMapLayerRegistered = false;
 
         public override bool ShouldLoad(EnumAppSide forSide) => forSide == EnumAppSide.Client;
 
@@ -76,22 +79,24 @@ namespace TraderMapTooltip
 
             LoadCache();
             
-            api.Event.RegisterCallback((dt) => {
-                api.Event.EnqueueMainThreadTask(SetupMapLayer, "tradernotes_map_setup");
-            }, 3000);
-            
+            // Map-Layer Registrierung sicher im OnClientTick
             api.Event.RegisterGameTickListener(OnClientTick, 500);
             api.Event.LeaveWorld += SaveCache;
         }
 
-        private void SetupMapLayer() {
+        private void EnsureMapLayer() {
+            if (isMapLayerRegistered) return;
             if (capi?.World == null) return;
+            
             var mapManager = capi.ModLoader.GetModSystem<WorldMapManager>();
             if (mapManager == null) return;
+
             if (!mapManager.MapLayers.Any(l => l is TraderMapLayer)) {
                 LatestLayerId = DateTime.Now.Ticks;
                 mapManager.MapLayers.Add(new TraderMapLayer(capi, mapManager, LatestLayerId));
             }
+            
+            isMapLayerRegistered = true;
         }
 
         private string DetectTraderType(Entity entity) {
@@ -113,6 +118,10 @@ namespace TraderMapTooltip
         }
 
         private void OnClientTick(float dt) {
+            if (!isMapLayerRegistered) {
+                EnsureMapLayer();
+            }
+
             if (capi?.World?.Player == null) return;
             var currentTraderInv = capi.World.Player.InventoryManager.OpenedInventories.FirstOrDefault(i => i is InventoryTrader) as InventoryTrader;
 
@@ -310,7 +319,11 @@ namespace TraderMapTooltip
 
                     double daysRemaining = trader.NextRefreshTotalDays - capi.World.Calendar.TotalDays;
                     
-                    if (daysRemaining > 0.0) {
+                    // Logik für "Outdated":
+                    // Wenn die Zeit abgelaufen ist (daysRemaining <= 0), wird KEIN Timer mehr angezeigt,
+                    // sondern nur der Text. Da sich "NextRefreshTotalDays" nicht automatisch ändert,
+                    // bleibt dieser Zustand dauerhaft bestehen, bis der Spieler den Händler besucht.
+                    if (daysRemaining > 0.01) {
                         hoverText.AppendLine($"\n<font color='#AAAAAA'>{Lang.Get("tradernotes:refresh-in", daysRemaining.ToString("0.0"))}</font>");
                     } else {
                         hoverText.AppendLine($"\n<font color='#FF6666'><i>{Lang.Get("tradernotes:outdated")}</i></font>");
@@ -324,7 +337,6 @@ namespace TraderMapTooltip
         private void BuildItemString(StringBuilder sb, CachedTradeItem item, TraderNotesConfig cfg, string currency, string soldOutTxt) {
             string soldOutMarker = item.IsSoldOut ? $" <font color='#FF6666'>[{soldOutTxt}]</font>" : "";
 
-            // Format: 5x Itemname (64): 10 [Ausverkauft]
             sb.Append($" • <font color='{cfg.ColorDemand}'>{item.Stock}x</font> ");
             sb.Append($"<font color='{cfg.ColorItemName}'>{item.Name}</font> ");
             sb.Append($"<font color='{cfg.ColorItemStack}'>({item.StackSize})</font>: ");
