@@ -14,9 +14,10 @@
   "tradernotes:item-unknown": "Unknown",
   "tradernotes:currency": " ",
   "tradernotes:soldout": "Sold Out",
-  "tradernotes:money-label": "Assets:",
+  "tradernotes:money-label": "Money:",
   "tradernotes:offers-label": "Sells:",
   "tradernotes:wants-label": "Buys:",
   "tradernotes:refresh-in": "Restock in: {0} days",
   "tradernotes:outdated": "Trader has received new goods, this list is outdated"
+
 }
