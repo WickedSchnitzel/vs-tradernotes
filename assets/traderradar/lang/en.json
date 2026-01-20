@@ -1,0 +1,18 @@
+{
+  "traderradar.title": "Trader Radar",
+  "traderradar.labelMoney": "Budget:",
+  "traderradar.labelCurrency": "Gears",
+  "traderradar.offers": "OFFERS:",
+  "traderradar.wants": "WANTS:",
+  "traderradar.soldout": "SOLD OUT",
+  "traderradar.unknown": "unknown",
+  "traderradar.trader": "Trader",
+  "traderradar.trader.furniture": "Furniture Trader",
+  "traderradar.trader.clothing": "Clothing Trader",
+  "traderradar.trader.general": "General Goods",
+  "traderradar.trader.artisan": "Artisan Goods",
+  "traderradar.trader.agriculture": "Agriculture",
+  "traderradar.trader.survival": "Survival Goods",
+  "traderradar.trader.building": "Building Materials",
+  "traderradar.trader.luxuries": "Luxuries"
+}

@@ -1,0 +1,22 @@
+{
+  "tradernotes:layer-title": "Händler",
+  "tradernotes:trader-defaultname": "Händler",
+  "tradernotes:type-furniture": "Möbelhändler",
+  "tradernotes:type-clothing": "Kleidungshändler",
+  "tradernotes:type-general": "Gemischtwarenhändler",
+  "tradernotes:type-artisan": "Handwerker",
+  "tradernotes:type-agriculture": "Landwirtschaftshändler",
+  "tradernotes:type-survival": "Überlebenshändler",
+  "tradernotes:type-building": "Baustoffhändler",
+  "tradernotes:type-luxuries": "Luxusgüterhändler",
+  "tradernotes:type-treasure": "Schatzjäger",
+  "tradernotes:type-unknown": "Händler",
+  "tradernotes:item-unknown": "Unbekannt",
+  "tradernotes:currency": " ",
+  "tradernotes:soldout": "Ausverkauft",
+  "tradernotes:money-label": "Vermögen:",
+  "tradernotes:offers-label": "Verkauft:",
+  "tradernotes:wants-label": "Kauft:",
+  "tradernotes:refresh-in": "Restzeit bis Neuwareneingang: {0} Tage",
+  "tradernotes:outdated": "Der Händler hat neue Ware erhalten, diese Liste ist nicht mehr aktuell"
+}

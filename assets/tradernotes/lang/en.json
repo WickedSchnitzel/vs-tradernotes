@@ -1,0 +1,22 @@
+{
+  "tradernotes:layer-title": "Traders",
+  "tradernotes:trader-defaultname": "Trader",
+  "tradernotes:type-furniture": "Furniture Trader",
+  "tradernotes:type-clothing": "Clothing Trader",
+  "tradernotes:type-general": "Commodities Trader",
+  "tradernotes:type-artisan": "Artisan Trader",
+  "tradernotes:type-agriculture": "Agriculture Trader",
+  "tradernotes:type-survival": "Survival Goods Trader",
+  "tradernotes:type-building": "Building Materials Trader",
+  "tradernotes:type-luxuries": "Luxuries Trader",
+  "tradernotes:type-treasure": "Treasure Hunter",
+  "tradernotes:type-unknown": "Trader",
+  "tradernotes:item-unknown": "Unknown",
+  "tradernotes:currency": " ",
+  "tradernotes:soldout": "Sold Out",
+  "tradernotes:money-label": "Assets:",
+  "tradernotes:offers-label": "Sells:",
+  "tradernotes:wants-label": "Buys:",
+  "tradernotes:refresh-in": "Restock in: {0} days",
+  "tradernotes:outdated": "Trader has received new goods, this list is outdated"
+}

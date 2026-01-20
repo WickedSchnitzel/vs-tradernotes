@@ -1,0 +1,18 @@
+{
+  "traderradar.title": "Händler Radar",
+  "traderradar.labelMoney": "Budget:",
+  "traderradar.labelCurrency": "Zahnräder",
+  "traderradar.offers": "ANGEBOT:",
+  "traderradar.wants": "GESUCHT:",
+  "traderradar.soldout": "Ausverkauft",
+  "traderradar.unknown": "unbekannt",
+  "traderradar.trader": "Händler",
+  "traderradar.trader.furniture": "Möbelhändler",
+  "traderradar.trader.clothing": "Kleidungshändler",
+  "traderradar.trader.general": "Gemischtwaren",
+  "traderradar.trader.artisan": "Handwerkswaren",
+  "traderradar.trader.agriculture": "Landwirtschaft",
+  "traderradar.trader.survival": "Überlebensgüter",
+  "traderradar.trader.building": "Baumaterialien",
+  "traderradar.trader.luxuries": "Luxusgüter"
+}
