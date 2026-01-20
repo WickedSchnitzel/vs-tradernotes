@@ -18,5 +18,6 @@
   "tradernotes:offers-label": "Verkauft:",
   "tradernotes:wants-label": "Kauft:",
   "tradernotes:refresh-in": "Restzeit bis Neuwareneingang: {0} Tage",
-  "tradernotes:outdated": "Der Händler hat neue Ware erhalten, diese Liste ist nicht mehr aktuell"
+  "tradernotes:outdated": "Der Händler hat neue Ware erhalten, diese Liste ist nicht mehr aktuell."
+
 }
