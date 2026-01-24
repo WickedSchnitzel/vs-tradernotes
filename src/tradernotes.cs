@@ -15,14 +15,12 @@ using Newtonsoft.Json;
 namespace TraderMapTooltip
 {
     public class TraderNotesConfig {
-        // Händler Vermögen
+
         public string ColorTraderFunds = "#deffa1"; 
         
-        // Überschriften
         public string ColorSelling = "#40a746"; 
         public string ColorBuying = "#fb2870";  
         
-        // Item Details
         public string ColorDemand = "#9d9d9d";    
         public string ColorItemName = "#e5e6de";  
         public string ColorItemStack = "#9d9d9d"; 
