@@ -3,6 +3,7 @@ using System.Text;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Globalization;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
@@ -11,20 +12,24 @@ using Vintagestory.API.Datastructures;
 using Vintagestory.API.Config;
 using Vintagestory.GameContent; 
 using Newtonsoft.Json;
-
+//v1.0.3
 namespace TraderMapTooltip
 {
     public class TraderNotesConfig {
+        public string Icon = "trader";
+        public int IconSize = 28;
+        public string IconColor = "#d4d87f";
+        public string CurrencyName = "";
+        public bool LiveUpdate = false; 
 
         public string ColorTraderFunds = "#deffa1"; 
-        
         public string ColorSelling = "#40a746"; 
-        public string ColorBuying = "#fb2870";  
-        
+        public string ColorBuying = "#deffa1";  
         public string ColorDemand = "#9d9d9d";    
         public string ColorItemName = "#e5e6de";  
         public string ColorItemStack = "#9d9d9d"; 
-        public string ColorMoney = "#deebc7";     
+        public string ColorPrice = "#deebc7";
+        public string ColorDistance = "#7fb3d8"; 
     }
 
     public class CachedTradeItem {
@@ -42,12 +47,9 @@ namespace TraderMapTooltip
         public int Money { get; set; }
         public bool IsDiscovered { get; set; } = false;
         public double LastUpdatedTotalDays { get; set; }
-        // Dieser Wert ist fest gespeichert und ändert sich nur bei Besuch
         public double NextRefreshTotalDays { get; set; }
-        
         public List<CachedTradeItem> Sells { get; set; } = new List<CachedTradeItem>();
         public List<CachedTradeItem> Wants { get; set; } = new List<CachedTradeItem>();
-        
         public double X { get; set; }
         public double Y { get; set; }
         public double Z { get; set; }
@@ -60,40 +62,38 @@ namespace TraderMapTooltip
         public static long LatestLayerId = 0;
         private string savePath;
         private bool wasTraderInventoryOpen = false;
-        
-        // Verhindert den Absturz beim Laden
         private bool isMapLayerRegistered = false;
 
         public override bool ShouldLoad(EnumAppSide forSide) => forSide == EnumAppSide.Client;
 
         public override void StartClientSide(ICoreClientAPI api) {
             this.capi = api;
-            this.savePath = Path.Combine(api.DataBasePath, "ModData", "tradernotes_cache.json");
-
             try {
                 Config = api.LoadModConfig<TraderNotesConfig>("TraderNotesConfig.json") ?? new TraderNotesConfig();
                 api.StoreModConfig(Config, "TraderNotesConfig.json");
             } catch { Config = new TraderNotesConfig(); }
 
-            LoadCache();
-            
-            // Map-Layer Registrierung sicher im OnClientTick
-            api.Event.RegisterGameTickListener(OnClientTick, 500);
+            api.Event.LevelFinalize += OnLevelFinalize;
             api.Event.LeaveWorld += SaveCache;
+            api.Event.RegisterGameTickListener(OnClientTick, 500);
+        }
+
+        private void OnLevelFinalize() {
+            string worldId = capi.World.SavegameIdentifier;
+            if (string.IsNullOrEmpty(worldId)) worldId = "default";
+            this.savePath = Path.Combine(capi.DataBasePath, "ModData", $"tradernotes_cache.{worldId}.json");
+            Cache.Clear();
+            LoadCache();
         }
 
         private void EnsureMapLayer() {
-            if (isMapLayerRegistered) return;
-            if (capi?.World == null) return;
-            
+            if (isMapLayerRegistered || capi?.World == null) return;
             var mapManager = capi.ModLoader.GetModSystem<WorldMapManager>();
             if (mapManager == null) return;
-
             if (!mapManager.MapLayers.Any(l => l is TraderMapLayer)) {
                 LatestLayerId = DateTime.Now.Ticks;
                 mapManager.MapLayers.Add(new TraderMapLayer(capi, mapManager, LatestLayerId));
             }
-            
             isMapLayerRegistered = true;
         }
 
@@ -101,7 +101,6 @@ namespace TraderMapTooltip
             string tag = (entity.WatchedAttributes.GetString("traderTag") ?? entity.Attributes.GetString("traderTag") ?? "").ToLower();
             string code = entity.Code?.Path?.ToLower() ?? "";
             string combined = (tag + " " + code).ToLower();
-
             if (combined.Contains("furniture")) return Lang.Get("tradernotes:type-furniture");
             if (combined.Contains("clothing")) return Lang.Get("tradernotes:type-clothing");
             if (combined.Contains("general") || combined.Contains("commodities")) return Lang.Get("tradernotes:type-general");
@@ -111,28 +110,25 @@ namespace TraderMapTooltip
             if (combined.Contains("build")) return Lang.Get("tradernotes:type-building");
             if (combined.Contains("luxuries")) return Lang.Get("tradernotes:type-luxuries");
             if (combined.Contains("treasure")) return Lang.Get("tradernotes:type-treasure");
-
             return Lang.Get("tradernotes:type-unknown");
         }
 
         private void OnClientTick(float dt) {
-            if (!isMapLayerRegistered) {
-                EnsureMapLayer();
-            }
-
+            if (!isMapLayerRegistered) EnsureMapLayer();
             if (capi?.World?.Player == null) return;
-            var currentTraderInv = capi.World.Player.InventoryManager.OpenedInventories.FirstOrDefault(i => i is InventoryTrader) as InventoryTrader;
 
+            var currentTraderInv = capi.World.Player.InventoryManager.OpenedInventories.FirstOrDefault(i => i is InventoryTrader) as InventoryTrader;
             bool isCurrentlyOpen = currentTraderInv != null;
-            if (isCurrentlyOpen || wasTraderInventoryOpen) {
-                UpdateActiveTrader(currentTraderInv);
-            }
+            if (isCurrentlyOpen || wasTraderInventoryOpen) UpdateActiveTrader(currentTraderInv);
             wasTraderInventoryOpen = isCurrentlyOpen;
 
             foreach (var entity in capi.World.LoadedEntities.Values) {
-                if (entity?.Code?.Path != null && entity.Code.Path.Contains("trader")) {
+                if (entity is EntityTradingHumanoid trader) {
                     if (Cache.TryGetValue(entity.EntityId, out var entry)) {
-                        entry.X = entity.Pos.X; entry.Y = entity.Pos.Y; entry.Z = entity.Pos.Z;
+                        entry.X = trader.Pos.X; entry.Y = trader.Pos.Y; entry.Z = trader.Pos.Z;
+                        if (Config.LiveUpdate && !isCurrentlyOpen) {
+                            UpdateTraderData(trader, trader.Inventory);
+                        }
                     }
                 }
             }
@@ -140,207 +136,168 @@ namespace TraderMapTooltip
 
         private void UpdateActiveTrader(InventoryTrader traderInv) {
             EntityTradingHumanoid nearestTrader = capi.World.GetNearestEntity(capi.World.Player.Entity.Pos.XYZ, 10f, 10f, (e) => e is EntityTradingHumanoid) as EntityTradingHumanoid;
-            if (nearestTrader == null) return;
+            if (nearestTrader != null) UpdateTraderData(nearestTrader, traderInv ?? nearestTrader.Inventory);
+        }
 
-            long id = nearestTrader.EntityId;
+        private void UpdateTraderData(EntityTradingHumanoid trader, IInventory inv) {
+            long id = trader.EntityId;
             if (!Cache.ContainsKey(id)) {
                 Cache[id] = new SavedTrader {
-                    Name = nearestTrader.GetBehavior<EntityBehaviorNameTag>()?.DisplayName ?? Lang.Get("tradernotes:trader-defaultname"),
+                    Name = trader.GetBehavior<EntityBehaviorNameTag>()?.DisplayName ?? Lang.Get("tradernotes:trader-defaultname"),
                     EntityId = id,
-                    TraderType = DetectTraderType(nearestTrader)
+                    TraderType = DetectTraderType(trader)
                 };
             }
-
             var entry = Cache[id];
             bool changed = false;
-
-            string currentType = DetectTraderType(nearestTrader);
-            if (entry.TraderType != currentType) { entry.TraderType = currentType; changed = true; }
-
-            int currentMoney = nearestTrader.Inventory?.MoneySlot?.Empty == false ? nearestTrader.Inventory.MoneySlot.StackSize : 0;
+            if (entry.TraderType != DetectTraderType(trader)) { entry.TraderType = DetectTraderType(trader); changed = true; }
+            int currentMoney = trader.Inventory?.MoneySlot?.Empty == false ? trader.Inventory.MoneySlot.StackSize : 0;
             if (entry.Money != currentMoney) { entry.Money = currentMoney; changed = true; }
+            double targetDate = capi.World.Calendar.TotalDays + trader.NextRefreshTotalDays();
+            if (Math.Abs(entry.NextRefreshTotalDays - targetDate) > 0.01) { entry.NextRefreshTotalDays = targetDate; changed = true; }
 
-            if (traderInv != null) {
-                double now = capi.World.Calendar.TotalDays;
-                double timeRemaining = nearestTrader.NextRefreshTotalDays();
-                double targetDate = now + timeRemaining;
-
-                if (Math.Abs(entry.NextRefreshTotalDays - targetDate) > 0.01) {
-                    entry.NextRefreshTotalDays = targetDate;
-                    changed = true;
-                }
-            }
-
-            if (traderInv != null) {
+            if (inv != null) {
                 List<CachedTradeItem> sells = new List<CachedTradeItem>();
                 List<CachedTradeItem> wants = new List<CachedTradeItem>();
-
-                for (int i = 0; i < traderInv.Count; i++) {
-                    var slot = traderInv[i];
-                    if (slot?.Itemstack == null) continue;
-
-                    if (slot.Itemstack.Collectible?.Code.Path.Contains("gear-rusty") == true) continue;
-
+                for (int i = 0; i < inv.Count; i++) {
+                    var slot = inv[i];
+                    if (slot?.Itemstack == null || slot.Itemstack.Collectible?.Code.Path.Contains("gear-rusty") == true) continue;
                     bool isSoldOut = slot.DrawUnavailable;
-                    
-                    int availableTrades = 0;
-                    int price = 0;
-                    int stackSize = slot.Itemstack.StackSize;
-
-                    if (slot is ItemSlotTrade tradeSlot && tradeSlot.TradeItem != null) {
-                        availableTrades = tradeSlot.TradeItem.Stock;
-                        price = tradeSlot.TradeItem.Price;
-                    } 
-                    else {
-                        ITreeAttribute tradeAttr = slot.Itemstack.Attributes?.GetTreeAttribute("tradeprops") ?? slot.Itemstack.Attributes?.GetTreeAttribute("trade");
-                        if (tradeAttr != null) {
-                            if (tradeAttr.HasAttribute("stock")) availableTrades = tradeAttr.GetInt("stock");
-                            else if (tradeAttr.HasAttribute("supply")) availableTrades = tradeAttr.GetInt("supply");
-                            else if (tradeAttr.HasAttribute("demand")) availableTrades = tradeAttr.GetInt("demand");
-                            
-                            price = tradeAttr.GetInt("price", 0);
-                        } else {
-                            availableTrades = stackSize;
-                        }
-                    }
-
-                    string itemName = Lang.Get("tradernotes:item-unknown");
+                    int availableTrades = slot is ItemSlotTrade tradeSlot && tradeSlot.TradeItem != null ? tradeSlot.TradeItem.Stock : slot.Itemstack.StackSize;
+                    int price = slot is ItemSlotTrade ts && ts.TradeItem != null ? ts.TradeItem.Price : 0;
+                    string itemName = slot.Itemstack.GetName();
                     try {
-                        ITreeAttribute tradeAttrName = slot.Itemstack.Attributes?.GetTreeAttribute("tradeprops");
-                        var tradeStack = tradeAttrName?.GetItemstack("stack");
-                        itemName = tradeStack?.GetName() ?? slot.Itemstack.GetName();
+                        var tradeStack = slot.Itemstack.Attributes?.GetTreeAttribute("tradeprops")?.GetItemstack("stack");
+                        if (tradeStack != null) itemName = tradeStack.GetName();
                     } catch { }
-
-                    var itemInfo = new CachedTradeItem {
-                        Name = itemName,
-                        Stock = isSoldOut ? 0 : availableTrades,
-                        StackSize = stackSize,
-                        Price = price,
-                        IsSoldOut = isSoldOut
-                    };
-
+                    var itemInfo = new CachedTradeItem { Name = itemName, Stock = isSoldOut ? 0 : availableTrades, StackSize = slot.Itemstack.StackSize, Price = price, IsSoldOut = isSoldOut };
                     if (i < 16) sells.Add(itemInfo); else wants.Add(itemInfo);
                 }
-
-                string currentSellsJson = JsonConvert.SerializeObject(sells);
-                string savedSellsJson = JsonConvert.SerializeObject(entry.Sells);
-                string currentWantsJson = JsonConvert.SerializeObject(wants);
-                string savedWantsJson = JsonConvert.SerializeObject(entry.Wants);
-
-                if (currentSellsJson != savedSellsJson || currentWantsJson != savedWantsJson) {
-                    entry.Sells = sells; 
-                    entry.Wants = wants;
+                if (JsonConvert.SerializeObject(sells) != JsonConvert.SerializeObject(entry.Sells) || JsonConvert.SerializeObject(wants) != JsonConvert.SerializeObject(entry.Wants)) {
+                    entry.Sells = sells; entry.Wants = wants;
                     entry.IsDiscovered = true;
                     entry.LastUpdatedTotalDays = capi.World.Calendar.TotalDays;
                     changed = true;
                 }
             }
-
-            if (changed) {
-                entry.X = nearestTrader.Pos.X; entry.Y = nearestTrader.Pos.Y; entry.Z = nearestTrader.Pos.Z;
-                SaveCache();
-            }
+            if (changed) { entry.X = trader.Pos.X; entry.Y = trader.Pos.Y; entry.Z = trader.Pos.Z; SaveCache(); }
         }
 
         private void LoadCache() {
-            if (!File.Exists(savePath)) return;
+            if (string.IsNullOrEmpty(savePath) || !File.Exists(savePath)) return;
             try { Cache = JsonConvert.DeserializeObject<Dictionary<long, SavedTrader>>(File.ReadAllText(savePath)) ?? new Dictionary<long, SavedTrader>(); } catch { }
         }
 
         public void SaveCache() {
-            try {
-                Directory.CreateDirectory(Path.GetDirectoryName(savePath));
-                File.WriteAllText(savePath, JsonConvert.SerializeObject(Cache, Formatting.Indented));
-            } catch { }
+            if (string.IsNullOrEmpty(savePath)) return;
+            try { Directory.CreateDirectory(Path.GetDirectoryName(savePath)); File.WriteAllText(savePath, JsonConvert.SerializeObject(Cache, Formatting.Indented)); } catch { }
         }
     }
 
     public class TraderMapLayer : MapLayer {
         private ICoreClientAPI capi;
         private long myId;
+        private LoadedTexture iconTexture;
+        private string loadedIconName;
+        private string loadedIconColor;
+        private int loadedIconSize;
 
-        public TraderMapLayer(ICoreClientAPI api, IWorldMapManager mapSink, long id) : base(api, mapSink) { 
-            this.capi = api; 
-            this.myId = id; 
-        }
-        
+        public TraderMapLayer(ICoreClientAPI api, IWorldMapManager mapSink, long id) : base(api, mapSink) { this.capi = api; this.myId = id; }
         public override string LayerGroupCode => "traders";
         public override string Title => Lang.Get("tradernotes:layer-title");
         public override EnumMapAppSide DataSide => EnumMapAppSide.Client;
 
         public override void Render(GuiElementMap map, float dt) {
-            if (!Active || myId != TraderMapMod.LatestLayerId) return;
+            if (!Active || myId != TraderMapMod.LatestLayerId || TraderMapMod.Config == null) return;
+            if (iconTexture == null || loadedIconName != TraderMapMod.Config.Icon || loadedIconColor != TraderMapMod.Config.IconColor || loadedIconSize != TraderMapMod.Config.IconSize) {
+                iconTexture?.Dispose(); iconTexture = null;
+                loadedIconName = TraderMapMod.Config.Icon ?? "trader";
+                loadedIconColor = TraderMapMod.Config.IconColor ?? "#d4d87f";
+                loadedIconSize = TraderMapMod.Config.IconSize > 0 ? TraderMapMod.Config.IconSize : 28;
+                try {
+                    AssetLocation loc = new AssetLocation("survival", "textures/icons/worldmap/" + loadedIconName + ".svg");
+                    if (!capi.Assets.Exists(loc)) loc = new AssetLocation("game", "textures/icons/worldmap/" + loadedIconName + ".svg");
+                    if (capi.Assets.Exists(loc)) {
+                        string hex = loadedIconColor.Replace("#", "");
+                        if (hex.Length == 6) hex = "FF" + hex;
+                        uint colorUint = uint.Parse(hex, NumberStyles.HexNumber);
+                        iconTexture = capi.Gui.LoadSvgWithPadding(loc, loadedIconSize, loadedIconSize, 2, (int)colorUint);
+                    }
+                } catch { }
+            }
 
             foreach (var trader in TraderMapMod.Cache.Values) {
+                if (trader == null || !trader.IsDiscovered) continue;
                 Vec2f viewPos = new Vec2f();
                 map.TranslateWorldPosToViewPos(new Vec3d(trader.X, trader.Y, trader.Z), ref viewPos);
-                
                 if (viewPos.X < 0 || viewPos.Y < 0 || viewPos.X > map.Bounds.OuterWidth || viewPos.Y > map.Bounds.OuterHeight) continue;
-                
-                capi.Render.RenderRectangle((float)(viewPos.X + map.Bounds.renderX - 3), (float)(viewPos.Y + map.Bounds.renderY - 3), 50f, 6f, 6f, ColorUtil.ColorFromRgba(255, 215, 0, 255));
+                float drawX = (float)(viewPos.X + map.Bounds.renderX);
+                float drawY = (float)(viewPos.Y + map.Bounds.renderY);
+                float halfSize = loadedIconSize / 2f;
+                if (iconTexture != null && iconTexture.TextureId != 0) {
+                    capi.Render.Render2DTexture(iconTexture.TextureId, drawX - halfSize, drawY - halfSize, loadedIconSize, loadedIconSize, 50f);
+                } else {
+                    string hexFallback = (TraderMapMod.Config.IconColor ?? "#d4d87f").Replace("#", "");
+                    if (hexFallback.Length == 6) hexFallback = "FF" + hexFallback;
+                    int fbColor = (int)uint.Parse(hexFallback, NumberStyles.HexNumber);
+                    float rectSize = loadedIconSize / 4f;
+                    capi.Render.RenderRectangle(drawX - rectSize, drawY - rectSize, 50f, rectSize * 2, rectSize * 2, fbColor);
+                }
             }
         }
 
         public override void OnMouseMoveClient(MouseEvent args, GuiElementMap map, StringBuilder hoverText) {
-            if (!Active || myId != TraderMapMod.LatestLayerId) return;
-            
+            if (!Active || myId != TraderMapMod.LatestLayerId || TraderMapMod.Config == null) return;
+            float halfSize = (TraderMapMod.Config.IconSize > 0 ? TraderMapMod.Config.IconSize : 28) / 2f;
             foreach (var trader in TraderMapMod.Cache.Values) {
-                if (!trader.IsDiscovered) continue;
+                if (trader == null || !trader.IsDiscovered) continue;
                 Vec2f viewPos = new Vec2f();
                 map.TranslateWorldPosToViewPos(new Vec3d(trader.X, trader.Y, trader.Z), ref viewPos);
-                
-                if (Math.Abs(viewPos.X - (args.X - map.Bounds.renderX)) < 12 && Math.Abs(viewPos.Y - (args.Y - map.Bounds.renderY)) < 12) {
+                if (Math.Abs(viewPos.X - (args.X - map.Bounds.renderX)) < halfSize && Math.Abs(viewPos.Y - (args.Y - map.Bounds.renderY)) < halfSize) {
                     var cfg = TraderMapMod.Config;
-                    string currencyName = Lang.Get("tradernotes:currency");
-                    string soldOutText = Lang.Get("tradernotes:soldout");
+                    string cur = cfg.CurrencyName ?? "";
+                    string so = Lang.Get("tradernotes:soldout");
                     
-                    // --- HEADER ---
                     hoverText.AppendLine($"<font color='#F5E6B5'><b>{trader.Name}</b></font>");
                     hoverText.AppendLine($"<font color='#BBBBBB'><i>{trader.TraderType}</i></font>");
-                    hoverText.AppendLine($"<font color='{cfg.ColorTraderFunds}'>{Lang.Get("tradernotes:money-label")} {trader.Money}{currencyName}</font>");
 
-                    // --- SELLS ---
+                    if (capi.World.Player != null) {
+                        double dist = Math.Sqrt(capi.World.Player.Entity.Pos.SquareDistanceTo(trader.X, trader.Y, trader.Z));
+                        hoverText.AppendLine($"<font color='{cfg.ColorDistance}'>{Lang.Get("tradernotes:distance-label", "Distance:")} {dist.ToString("0")}m</font>");
+                    }
+
+                    hoverText.AppendLine($"<font color='{cfg.ColorTraderFunds}'>{Lang.Get("tradernotes:money-label")} {trader.Money}{cur}</font>");
+
                     if (trader.Sells.Count > 0) {
                         hoverText.AppendLine($"\n<font color='{cfg.ColorSelling}'>{Lang.Get("tradernotes:offers-label")}</font>");
-                        foreach (var item in trader.Sells) {
-                            BuildItemString(hoverText, item, cfg, currencyName, soldOutText);
-                        }
+                        foreach (var item in trader.Sells) BuildItemString(hoverText, item, cfg, cur, so);
                     }
-
-                    // --- BUYS ---
                     if (trader.Wants.Count > 0) {
                         hoverText.AppendLine($"\n<font color='{cfg.ColorBuying}'>{Lang.Get("tradernotes:wants-label")}</font>");
-                        foreach (var item in trader.Wants) {
-                             BuildItemString(hoverText, item, cfg, currencyName, soldOutText);
+                        foreach (var item in trader.Wants) BuildItemString(hoverText, item, cfg, cur, so);
+                    }
+                    
+                    double days = trader.NextRefreshTotalDays - capi.World.Calendar.TotalDays;
+                    if (days > 0.01) hoverText.AppendLine($"\n<font color='#AAAAAA'>{Lang.Get("tradernotes:refresh-in", days.ToString("0.0"))}</font>");
+                    else hoverText.AppendLine($"\n<font color='#FF6666'><i>{Lang.Get("tradernotes:outdated")}</i></font>");
+
+                    if (cfg.LiveUpdate) {
+                        bool inRange = capi.World.LoadedEntities.ContainsKey(trader.EntityId);
+                        if (!inRange) {
+                            hoverText.AppendLine($"<font color='#ff6666'>{Lang.Get("tradernotes:out-of-range", "Trader out of range, cannot live-update.")}</font>");
                         }
                     }
-
-                    double daysRemaining = trader.NextRefreshTotalDays - capi.World.Calendar.TotalDays;
-                    
-                    // Logik für "Outdated":
-                    // Wenn die Zeit abgelaufen ist (daysRemaining <= 0), wird KEIN Timer mehr angezeigt,
-                    // sondern nur der Text. Da sich "NextRefreshTotalDays" nicht automatisch ändert,
-                    // bleibt dieser Zustand dauerhaft bestehen, bis der Spieler den Händler besucht.
-                    if (daysRemaining > 0.01) {
-                        hoverText.AppendLine($"\n<font color='#AAAAAA'>{Lang.Get("tradernotes:refresh-in", daysRemaining.ToString("0.0"))}</font>");
-                    } else {
-                        hoverText.AppendLine($"\n<font color='#FF6666'><i>{Lang.Get("tradernotes:outdated")}</i></font>");
-                    }
-
                     return;
                 }
             }
         }
 
         private void BuildItemString(StringBuilder sb, CachedTradeItem item, TraderNotesConfig cfg, string currency, string soldOutTxt) {
-            string soldOutMarker = item.IsSoldOut ? $" <font color='#FF6666'>[{soldOutTxt}]</font>" : "";
-
-            sb.Append($" • <font color='{cfg.ColorDemand}'>{item.Stock}x</font> ");
-            sb.Append($"<font color='{cfg.ColorItemName}'>{item.Name}</font> ");
-            sb.Append($"<font color='{cfg.ColorItemStack}'>({item.StackSize})</font>: ");
-            sb.Append($"<font color='{cfg.ColorMoney}'>{item.Price}{currency}</font>");
-            
-            sb.AppendLine(soldOutMarker);
+            string so = item.IsSoldOut ? $" <font color='#FF6666'>({soldOutTxt})</font>" : "";
+            // Fix: Leerzeichen und Doppelpunkt-Formatierung beibehalten
+            sb.AppendLine($" • <font color='{cfg.ColorDemand}'>{item.Stock}x</font> <font color='{cfg.ColorItemName}'>{item.Name} </font><font color='{cfg.ColorItemStack}'>[{item.StackSize}]</font>:<font color='{cfg.ColorPrice}'>{item.Price}{currency} </font>{so}");
         }
+
+        public override void Dispose() { base.Dispose(); iconTexture?.Dispose(); }
     }
 }
