@@ -12,13 +12,12 @@
   "tradernotes:type-treasure": "Treasure Hunter",
   "tradernotes:type-unknown": "Trader",
   "tradernotes:item-unknown": "Unknown",
-  "tradernotes:currency": " ",
   "tradernotes:soldout": "Sold Out",
   "tradernotes:money-label": "Money:",
   "tradernotes:offers-label": "Selling:",
   "tradernotes:wants-label": "Buying:",
   "tradernotes:refresh-in": "Restock in: {0} days",
-  "tradernotes:outdated": "Trader has received new goods, this list is outdated."
-
+  "tradernotes:outdated": "Trader has received new goods, this list is outdated.",
+  "tradernotes:distance-label": "Distance",
+  "tradernotes:out-of-range": "Trader out of range. Cannot live-update."
 }
-
