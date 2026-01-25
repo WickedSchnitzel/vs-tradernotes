@@ -12,12 +12,12 @@
   "tradernotes:type-treasure": "Schatzjäger",
   "tradernotes:type-unknown": "Händler",
   "tradernotes:item-unknown": "Unbekannt",
-  "tradernotes:currency": " ",
   "tradernotes:soldout": "Ausverkauft",
   "tradernotes:money-label": "Vermögen:",
   "tradernotes:offers-label": "Verkauft:",
   "tradernotes:wants-label": "Kauft:",
   "tradernotes:refresh-in": "Restzeit bis Neuwareneingang: {0} Tage",
-  "tradernotes:outdated": "Der Händler hat neue Ware erhalten, diese Liste ist nicht mehr aktuell."
-
+  "tradernotes:outdated": "Der Händler hat neue Ware erhalten, diese Liste ist nicht mehr aktuell.",
+  "tradernotes:distance-label": "Distanz",
+  "tradernotes:out-of-range": "Händler außer Reichweite. Kein Live-Update."
 }
