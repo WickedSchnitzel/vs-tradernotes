@@ -1,4 +1,4 @@
-//v1.0.6
+//v1.0.7
 using System;
 using System.Text;
 using System.Collections.Generic;
@@ -32,7 +32,7 @@ namespace TraderMapTooltip
         public string ColorItemStack = "#9d9d9d"; 
         public string ColorPrice = "#deebc7";
         public string ColorDistance = "#7fb3d8";
-        public int IconRenderZIndex = 100;
+        public int IconRenderZIndex = 100; 
     }
 
     public class CachedTradeItem {
@@ -66,6 +66,11 @@ namespace TraderMapTooltip
         private string savePath;
         private bool wasTraderInventoryOpen = false;
         private bool isMapLayerRegistered = false;
+        private long lastCleanupCheckMs = 0;
+        private const int CleanupIntervalMs = 10000;
+        private const double CleanupRangeBlocks = 32.0;
+        public static long HoveredTraderId = 0;
+        private const string DeleteHotkeyCode = "tradernotes-delete-marker";
 
         public override bool ShouldLoad(EnumAppSide forSide) => forSide == EnumAppSide.Client;
 
@@ -80,6 +85,24 @@ namespace TraderMapTooltip
             api.Event.LeaveWorld += SaveCache;
             api.Event.BlockTexturesLoaded += OnBlockTexturesLoaded;
             api.Event.RegisterGameTickListener(OnClientTick, 500);
+
+            try {
+                api.Input.RegisterHotKey(DeleteHotkeyCode, Lang.Get("tradernotes:delete-marker-hotkey"), GlKeys.Delete, HotkeyType.GUIOrOtherControls);
+                api.Input.SetHotKeyHandler(DeleteHotkeyCode, OnDeleteMarkerHotkey);
+            } catch { }
+        }
+
+        private bool OnDeleteMarkerHotkey(KeyCombination comb) {
+            try {
+                if (HoveredTraderId == 0) return false;
+                if (!Cache.ContainsKey(HoveredTraderId)) return false;
+                long removedId = HoveredTraderId;
+                Cache.Remove(removedId);
+                HoveredTraderId = 0;
+                SaveCache();
+                capi?.TriggerIngameError(this, "tradernotes-marker-removed", Lang.Get("tradernotes:marker-removed"));
+                return true;
+            } catch { return false; }
         }
 
         private void OnLevelFinalize() {
@@ -159,6 +182,12 @@ namespace TraderMapTooltip
                 bool isCurrentlyOpen = currentTraderInv != null;
                 if (isCurrentlyOpen || wasTraderInventoryOpen) UpdateActiveTrader(currentTraderInv);
                 wasTraderInventoryOpen = isCurrentlyOpen;
+
+                long nowMs = capi.World.ElapsedMilliseconds;
+                if (nowMs - lastCleanupCheckMs > CleanupIntervalMs) {
+                    lastCleanupCheckMs = nowMs;
+                    CleanupRemovedTraders();
+                }
 
                 if (Config?.LiveUpdate == true) {
                     int interval = Config.UpdateIntervalSeconds > 0 ? Config.UpdateIntervalSeconds : 15;
@@ -245,6 +274,50 @@ namespace TraderMapTooltip
                     Cache = JsonConvert.DeserializeObject<Dictionary<long, SavedTrader>>(content) ?? new Dictionary<long, SavedTrader>();
                 }
             } catch { Cache = new Dictionary<long, SavedTrader>(); }
+        }
+
+        private void CleanupRemovedTraders() {
+            try {
+                if (capi?.World?.BlockAccessor == null) return;
+                var loaded = capi.World.LoadedEntities;
+                if (loaded == null) return;
+                var playerEntity = capi.World.Player?.Entity;
+                if (playerEntity == null) return;
+                var ppos = playerEntity.Pos;
+                double rangeSq = CleanupRangeBlocks * CleanupRangeBlocks;
+
+                List<long> toRemove = null;
+                foreach (var kvp in Cache) {
+                    var t = kvp.Value;
+                    if (t == null) continue;
+                    double distSq = ppos.SquareDistanceTo(t.X, t.Y, t.Z);
+                    if (distSq > rangeSq) continue;
+                    var pos = new BlockPos((int)t.X, (int)t.Y, (int)t.Z, 0);
+                    var chunk = capi.World.BlockAccessor.GetChunkAtBlockPos(pos);
+                    if (chunk == null) continue;
+                    if (!loaded.ContainsKey(kvp.Key)) {
+                        if (toRemove == null) toRemove = new List<long>();
+                        toRemove.Add(kvp.Key);
+                    }
+                }
+
+                if (toRemove != null && toRemove.Count > 0) {
+                    foreach (var id in toRemove) Cache.Remove(id);
+                    SaveCache();
+                }
+            } catch { }
+        }
+
+        public static string GetDeleteHotkeyDisplay(ICoreClientAPI api) {
+            try {
+                var hk = api?.Input?.GetHotKeyByCode(DeleteHotkeyCode);
+                var mapping = hk?.CurrentMapping;
+                if (mapping != null) {
+                    string s = mapping.ToString();
+                    if (!string.IsNullOrWhiteSpace(s)) return s;
+                }
+            } catch { }
+            return "Delete";
         }
 
         public void SaveCache() {
@@ -335,14 +408,19 @@ namespace TraderMapTooltip
         }
 
         public override void OnMouseMoveClient(MouseEvent args, GuiElementMap map, StringBuilder hoverText) {
-            if (!Active || myId != TraderMapMod.LatestLayerId || TraderMapMod.Config == null) return;
+            if (!Active || myId != TraderMapMod.LatestLayerId || TraderMapMod.Config == null) {
+                TraderMapMod.HoveredTraderId = 0;
+                return;
+            }
             float halfSize = (TraderMapMod.Config.IconSize > 0 ? TraderMapMod.Config.IconSize : 28) / 2f;
             var tradersCopy = TraderMapMod.Cache.Values.ToList();
+            TraderMapMod.HoveredTraderId = 0;
             foreach (var trader in tradersCopy) {
                 if (trader == null || !trader.IsDiscovered) continue;
                 Vec2f viewPos = new Vec2f();
                 map.TranslateWorldPosToViewPos(new Vec3d(trader.X, trader.Y, trader.Z), ref viewPos);
                 if (Math.Abs(viewPos.X - (args.X - map.Bounds.renderX)) < halfSize && Math.Abs(viewPos.Y - (args.Y - map.Bounds.renderY)) < halfSize) {
+                    TraderMapMod.HoveredTraderId = trader.EntityId;
                     var cfg = TraderMapMod.Config;
                     string cur = cfg.CurrencyName ?? "";
                     string so = Lang.Get("tradernotes:soldout");
@@ -380,6 +458,8 @@ namespace TraderMapTooltip
                             hoverText.AppendLine($"<font color='#ff6666'>{Lang.Get("tradernotes:out-of-range")}</font>");
                         }
                     }
+                    string hkLabel = TraderMapMod.GetDeleteHotkeyDisplay(capi);
+                    hoverText.AppendLine($"\n<font color='#888888'><i>{Lang.Get("tradernotes:delete-hint", hkLabel)}</i></font>");
                     return;
                 }
             }
@@ -390,6 +470,11 @@ namespace TraderMapTooltip
             sb.AppendLine($" • <font color='{cfg.ColorDemand}'>{item.Stock}x</font> <font color='{cfg.ColorItemName}'>{item.Name} </font><font color='{cfg.ColorItemStack}'>[{item.StackSize}]</font>:<font color='{cfg.ColorPrice}'>{item.Price}{currency} </font>{so}");
         }
 
-        public override void Dispose() { base.Dispose(); iconTexture?.Dispose(); }
+        public override void OnMapClosedClient() {
+            base.OnMapClosedClient();
+            TraderMapMod.HoveredTraderId = 0;
+        }
+
+        public override void Dispose() { base.Dispose(); iconTexture?.Dispose(); TraderMapMod.HoveredTraderId = 0; }
     }
 }
