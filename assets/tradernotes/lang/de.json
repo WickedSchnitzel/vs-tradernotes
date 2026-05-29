@@ -19,5 +19,8 @@
   "tradernotes:refresh-in": "Restzeit bis Neuwareneingang: {0} Tage",
   "tradernotes:outdated": "Der Händler hat neue Ware erhalten, diese Liste ist nicht mehr aktuell.",
   "tradernotes:distance-label": "Distanz",
-  "tradernotes:out-of-range": "Händler außer Reichweite. Kein Live-Update."
+  "tradernotes:out-of-range": "Händler außer Reichweite. Kein Live-Update.",
+  "tradernotes:delete-marker-hotkey": "Händlermarker entfernen (beim draufzeigen mit Maus)",
+  "tradernotes:marker-removed": "Händlermarker entfernt",
+  "tradernotes:delete-hint": "Drücke [{0}] um den Marker zu löschen"
 }
