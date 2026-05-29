@@ -19,5 +19,8 @@
   "tradernotes:refresh-in": "Restock in: {0} days",
   "tradernotes:outdated": "Trader has received new goods, this list is outdated.",
   "tradernotes:distance-label": "Distance",
-  "tradernotes:out-of-range": "Trader out of range. Cannot live-update."
+  "tradernotes:out-of-range": "Trader out of range. Cannot live-update.",
+  "tradernotes:delete-marker-hotkey": "Delete trader marker (hover on map)",
+  "tradernotes:marker-removed": "Trader marker removed",
+  "tradernotes:delete-hint": "Press [{0}] to remove this marker"
 }
